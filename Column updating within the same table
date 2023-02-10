@@ -1,0 +1,109 @@
+SELECT
+  *
+FROM
+  `nashvillehouse.Nashville_housing.Housing` 
+
+/* Fixed nulls */
+
+Select *
+From `nashvillehouse.Nashville_housing.Housing`
+Where PropertyAddress is null
+Order by parcelID
+
+Select PropertyAddress
+From `nashvillehouse.Nashville_housing.Housing`
+Where PropertyAddress is null
+
+/* parcel id can be used to identify missing property address
+Unique id is row identifier */
+
+Select a.parcelid, a.PropertyAddress, b.ParcelID, b.PropertyAddress, ifnull(a.PropertyAddress,b.PropertyAddress) As PropetyAddress
+From `nashvillehouse.Nashville_housing.Housing` a
+Join `nashvillehouse.Nashville_housing.Housing` b
+  on a.ParcelID = b.ParcelID
+  and a.UniqueID_ <> b.Uniqueid_
+Where a.PropertyAddress is null
+
+
+/* Update null values in property address */
+
+Update `nashvillehouse.Nashville_housing.Housing`
+Set PropertyAddress = ifnull(a.PropertyAddress,b.PropertyAddress)
+From `nashvillehouse.Nashville_housing.Housing` a
+Join `nashvillehouse.Nashville_housing.Housing` b
+  on a.ParcelID = b.ParcelID
+  and a.UniqueID_ <> b.Uniqueid_
+Where a.PropertyAddress is null
+
+
+/* To resolve this issue, you can use a subquery to ensure that each target row is updated with data from only one source row.
+*/
+
+UPDATE `nashvillehouse.Nashville_housing.Housing` target
+SET PropertyAddress = (
+  SELECT ifnull(a.PropertyAddress, b.PropertyAddress)
+  FROM `nashvillehouse.Nashville_housing.Housing` a
+  JOIN `nashvillehouse.Nashville_housing.Housing` b
+  ON a.ParcelID = b.ParcelID
+  AND a.UniqueID_ <> b.Uniqueid_
+  WHERE a.PropertyAddress is null
+  AND target.ParcelID = a.ParcelID
+  AND target.UniqueID_ = a.UniqueID_
+  LIMIT 1
+)
+WHERE EXISTS (
+  SELECT 1
+  FROM `nashvillehouse.Nashville_housing.Housing` a
+  JOIN `nashvillehouse.Nashville_housing.Housing` b
+  ON a.ParcelID = b.ParcelID
+  AND a.UniqueID_ <> b.Uniqueid_
+  WHERE a.PropertyAddress is null
+  AND target.ParcelID = a.ParcelID
+  AND target.UniqueID_ = a.UniqueID_
+)
+
+/*  BigQuery doesn't support correlated subqueries that reference other tables. 
+*/
+
+WITH cte AS (
+  SELECT a.ParcelID, a.UniqueID_, ifnull(a.PropertyAddress, b.PropertyAddress) as PropertyAddress
+  FROM `nashvillehouse.Nashville_housing.Housing` a
+  JOIN `nashvillehouse.Nashville_housing.Housing` b
+  ON a.ParcelID = b.ParcelID
+  AND a.UniqueID_ <> b.Uniqueid_
+  WHERE a.PropertyAddress is null
+)
+UPDATE `nashvillehouse.Nashville_housing.Housing` target
+SET PropertyAddress = cte.PropertyAddress
+FROM cte
+WHERE target.ParcelID = cte.ParcelID
+AND target.UniqueID_ = cte.UniqueID_
+
+/* can't run an UPDATE statement inside a WITH clause. */
+
+WITH cte AS (
+  SELECT a.ParcelID, a.UniqueID_, ifnull(a.PropertyAddress, b.PropertyAddress) as PropertyAddress
+  FROM `nashvillehouse.Nashville_housing.Housing` a
+  JOIN `nashvillehouse.Nashville_housing.Housing` b
+  ON a.ParcelID = b.ParcelID
+  AND a.UniqueID_ <> b.Uniqueid_
+  WHERE a.PropertyAddress is null
+)
+UPDATE `nashvillehouse.Nashville_housing.Housing`
+SET PropertyAddress = (
+  SELECT PropertyAddress
+  FROM cte
+  WHERE cte.ParcelID = `nashvillehouse.Nashville_housing.Housing`.ParcelID
+  AND cte.UniqueID_ = `nashvillehouse.Nashville_housing.Housing`.UniqueID_
+  LIMIT 1
+)
+WHERE EXISTS (
+  SELECT 1
+  FROM cte
+  WHERE cte.ParcelID = `nashvillehouse.Nashville_housing.Housing`.ParcelID
+  AND cte.UniqueID_ = `nashvillehouse.Nashville_housing.Housing`.UniqueID_
+)
+
+
+
+
